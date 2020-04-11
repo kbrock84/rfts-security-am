@@ -3,7 +3,7 @@
 - python 3.7+
 - nodejs 
 
-# Start RealsenseServer
+# Start RealSense Server
 
 Requires an Intel RealSense camera
 ```bash
