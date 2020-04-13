@@ -30,7 +30,7 @@ const colorMap = {
   truck: "#00fffb",
   unknown: "#fff200",
   controlPoint: "#ff0000",
-  regionLine: "#fff200"
+  regionLine: "#fff200",
 };
 
 const getPoint = (t, p1, p2, p3, p4) =>
@@ -63,6 +63,7 @@ const CamViewer = () => {
   const dataContainer = useRef();
   const hasPerson = useRef(false);
   let peoplePathPoints = [];
+  const shouldPredicAndAct = useRef(false);
 
   const triggerRegion = useRef({
     x1: 0,
@@ -72,7 +73,7 @@ const CamViewer = () => {
     x3: 1400,
     y3: 500,
     x4: 1920,
-    y4: 500
+    y4: 500,
   });
 
   const drawControlPoint = (ctx, x, y) => {
@@ -103,7 +104,7 @@ const CamViewer = () => {
 
   const isTriggerPoint = (pt, triggerCurve) => {
     const curvePoint = triggerCurve.find(
-      p => Math.abs(Math.round(p.x) - Math.round(pt.x)) < 5
+      (p) => Math.abs(Math.round(p.x) - Math.round(pt.x)) < 5
     );
     return curvePoint && curvePoint.y < pt.y;
   };
@@ -130,9 +131,9 @@ const CamViewer = () => {
   };
 
   let triggered;
-  const drawPeoplePathPoints = ctx => {
+  const drawPeoplePathPoints = (ctx) => {
     triggered = false;
-    peoplePathPoints.forEach(point => {
+    peoplePathPoints.forEach((point) => {
       ctx.strokeStyle = colorMap.path;
       if (isTriggerPoint(point, triggerCurve.current)) {
         ctx.strokeStyle = "red";
@@ -155,6 +156,35 @@ const CamViewer = () => {
     capContainer.appendChild(img);
   };
 
+  const predictAndAct = (ev) => {
+    model.current.detect(canvRef.current).then((predictions) => {
+      drawTriggerRegion(
+        ctx.current,
+        triggerCurve.current,
+        triggerRegion.current
+      );
+
+      predictions.forEach((p) => {
+        if (p.class === "tv" || p.class === "oven" || p.class === "suitcase") {
+          return;
+        }
+
+        if (p.class == "person") {
+          addPeoplePathPoints(ctx.current, p.bbox);
+        }
+
+        drawBoundingBox(ctx.current, p.bbox, p.class);
+      });
+
+      if (drawPeoplePathPoints(ctx.current)) {
+        handlePersonInPicture(capContainer.current, ev);
+      }
+
+      hasPerson.current = false;
+      isWorking.current = false;
+    });
+  };
+
   useEffect(() => {
     ctx.current = canvRef.current.getContext("2d");
     ctx.current.font = "28px Ariel";
@@ -163,7 +193,7 @@ const CamViewer = () => {
     const socket = io("http://192.168.1.24:9999/");
 
     socket.emit("start_rs_pipeline");
-    socket.on("jpg", ev => {
+    socket.on("jpg", (ev) => {
       if (!model.current) {
         return;
       }
@@ -173,36 +203,11 @@ const CamViewer = () => {
           ctxImg.current.src = ev;
           ctx.current.drawImage(ctxImg.current, 0, 0);
 
-          model.current.detect(canvRef.current).then(predictions => {
-            drawTriggerRegion(
-              ctx.current,
-              triggerCurve.current,
-              triggerRegion.current
-            );
-
-            predictions.forEach(p => {
-              if (
-                p.class === "tv" ||
-                p.class === "oven" ||
-                p.class === "suitcase"
-              ) {
-                return;
-              }
-
-              if (p.class == "person") {
-                addPeoplePathPoints(ctx.current, p.bbox);
-              }
-
-              drawBoundingBox(ctx.current, p.bbox, p.class);
-            });
-
-            if (drawPeoplePathPoints(ctx.current)) {
-              handlePersonInPicture(capContainer.current, ev);
-            }
-
-            hasPerson.current = false;
+          if (shouldPredicAndAct.current) {
+            predictAndAct(ev);
+          } else {
             isWorking.current = false;
-          });
+          }
         });
       }
     });
@@ -210,7 +215,7 @@ const CamViewer = () => {
 
   useEffect(() => {
     console.log("loading coco...");
-    cocoSsd.load({ base: "lite_mobilenet_v2" }).then(m => {
+    cocoSsd.load({ base: "lite_mobilenet_v2" }).then((m) => {
       model.current = m;
       console.log("coco loaded");
     });
@@ -267,6 +272,14 @@ const CamViewer = () => {
             id="controlPoint3Y"
             onChange={({ target }) => handleChange(target, "y3")}
           ></input>
+          <label for="shouldPredict">Should Predict</label>
+          <input
+            type="checkbox"
+            id="shouldPredict"
+            onChange={({ target }) =>
+              (shouldPredicAndAct.current = target.checked)
+            }
+          />
         </div>
       </MainWrapper>
       <CaptureContainer id="frames" ref={capContainer}></CaptureContainer>
